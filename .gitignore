@@ -1,0 +1,16 @@
+# Local reference repositories and Python environments.
+/coldcard/
+/seedsigner/
+/venv/
+/.venv/
+__pycache__/
+*.py[cod]
+
+# Private input and local launch scripts are not project sources.
+/rolls*.txt
+/run.sh
+
+# Editor locks, autosaves and backups.
+.#*
+\#*\#
+*~
