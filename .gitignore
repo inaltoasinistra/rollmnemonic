@@ -8,6 +8,7 @@ __pycache__/
 
 # Private input and local launch scripts are not project sources.
 /rolls*.txt
+!/rolls.txt
 /run.sh
 
 # Editor locks, autosaves and backups.
