@@ -21,6 +21,7 @@ import argparse
 import getpass
 import hashlib
 import hmac
+import json
 import secrets
 import sys
 import unicodedata
@@ -144,11 +145,38 @@ def electrum_mnemonic(entropy: bytes, seed_type: str, language: str) -> str:
     raise RuntimeError("Electrum counter exhausted")
 
 
-def output_lines(entropy: bytes, seed_types: list[str], language: str) -> list[str]:
-    lines = [f"bip39/{language}", bip39_mnemonic(entropy, language)]
+def yaml_quoted(value: str) -> str:
+    # Dice digits and hex values need quotes: YAML parsers might otherwise
+    # interpret digit-only inputs as numbers and lose leading zeroes.
+    return json.dumps(value, ensure_ascii=False)
+
+
+def wallet_lines(entropy: bytes, seed_types: list[str], language: str) -> list[str]:
+    lines = [
+        "  - format: bip39",
+        f"    language: {language}",
+        f"    mnemonic: {bip39_mnemonic(entropy, language)}",
+    ]
     for seed_type in dict.fromkeys(seed_types):
-        lines.extend([f"electrum/{seed_type}/{language}", electrum_mnemonic(entropy, seed_type, language)])
+        lines.extend([
+            "  - format: electrum",
+            f"    seed_type: {seed_type}",
+            f"    language: {language}",
+            f"    mnemonic: {electrum_mnemonic(entropy, seed_type, language)}",
+        ])
     return lines
+
+
+def render_yaml(entropy: bytes, os_entropy: bytes, rolls: str, seed_types: list[str], languages: list[str]) -> str:
+    lines = [
+        "entropy:",
+        f"  rolls: {yaml_quoted(rolls)}",
+        f"  extra: {yaml_quoted(os_entropy.hex())}",
+        "wallets:",
+    ]
+    for language in dict.fromkeys(languages):
+        lines.extend(wallet_lines(entropy, seed_types, language))
+    return "\n".join(lines) + "\n"
 
 
 def configure_output() -> None:
@@ -159,7 +187,7 @@ def configure_output() -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Read exactly 50 or 99 dice digits (1–6) from stdin; print labeled mnemonics.",
+        description="Read exactly 50 or 99 dice digits (1–6) from stdin; print mnemonics as YAML.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Suggested dice input (one digit per six-sided roll):\n"
@@ -173,7 +201,10 @@ def main() -> int:
             "Output length alone does not prove entropy quality."
         ),
     )
-    parser.add_argument("--language", choices=tuple(WORDLISTS), default="english", help="wordlist (default: english)")
+    parser.add_argument(
+        "--language", choices=tuple(WORDLISTS), action="append",
+        help="wordlist (default: english); repeat for multiple languages",
+    )
     parser.add_argument(
         "--extra-entropy", action="store_true",
         help="prompt secretly for 32 bytes in hex instead of drawing fresh OS randomness",
@@ -191,14 +222,13 @@ def main() -> int:
         provided = prompt_extra_entropy() if args.extra_entropy else None
         os_entropy = get_os_entropy(provided)
         entropy = mix_entropy(dice, os_entropy)
-        lines = ["entropy/extra", os_entropy.hex()]
-        lines.extend(output_lines(entropy, args.electrum_type or ["segwit"], args.language))
+        output = render_yaml(entropy, os_entropy, rolls, args.electrum_type or ["segwit"], args.language or ["english"])
     except (ValueError, RuntimeError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
     except KeyboardInterrupt:
         return 130
-    sys.stdout.write("\n".join(lines) + "\n")
+    sys.stdout.write(output)
     return 0
 
 

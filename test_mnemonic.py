@@ -162,19 +162,31 @@ class TestMnemonic(unittest.TestCase):
                 self.assertTrue(set(expected.split()) <= set(mnemonic.WORDLISTS[language]))
 
     def test_cli(self) -> None:
-        """The default and explicit selections emit only labeled output, with no partial errors."""
+        """The default and explicit selections emit structured YAML, with no partial errors."""
         for flags, expected in (([], ["segwit"]), (["--electrum-type", "standard"], ["standard"]),
                                 (["--electrum-type", "standard", "--electrum-type", "segwit",
                                   "--electrum-type", "standard"], ["standard", "segwit"])):
             result = self.run_prompt_cli(flags, ROLLS[:50] + "\n", OS_ENTROPY.hex())
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(result.stderr, "")
-            lines = result.stdout.splitlines()
-            self.assertEqual(len(lines), 2 * (2 + len(expected)))
-            labels = lines[::2]
-            expected_labels = ["entropy/extra", "bip39/english"] + [f"electrum/{kind}/english" for kind in expected]
-            self.assertEqual(labels, expected_labels)
-            self.assertEqual(lines[1], OS_ENTROPY.hex())
+            entropy = mnemonic.mix_entropy(mnemonic.dice_entropy(ROLLS[:50]), OS_ENTROPY)
+            lines = [
+                "entropy:",
+                f'  rolls: "{ROLLS[:50]}"',
+                f'  extra: "{OS_ENTROPY.hex()}"',
+                "wallets:",
+                "  - format: bip39",
+                "    language: english",
+                f'    mnemonic: {mnemonic.bip39_mnemonic(entropy, "english")}',
+            ]
+            for kind in expected:
+                lines.extend([
+                    "  - format: electrum",
+                    f"    seed_type: {kind}",
+                    "    language: english",
+                    f'    mnemonic: {mnemonic.electrum_mnemonic(entropy, kind, "english")}',
+                ])
+            self.assertEqual(result.stdout, "\n".join(lines) + "\n")
         result = subprocess.run(
             [sys.executable, str(ROOT / "mnemonic.py")], input="123\n", text=True, capture_output=True,
         )
@@ -189,11 +201,19 @@ class TestMnemonic(unittest.TestCase):
             result = self.run_prompt_cli(["--language", language], ROLLS[:50] + "\n", OS_ENTROPY.hex())
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(result.stderr, "")
-            self.assertEqual(result.stdout.splitlines(), [
-                "entropy/extra", OS_ENTROPY.hex(),
-                f"bip39/{language}", mnemonic.bip39_mnemonic(entropy, language),
-                f"electrum/segwit/{language}", mnemonic.electrum_mnemonic(entropy, "segwit", language),
+            lines = result.stdout.splitlines()
+            self.assertEqual(lines[:4], [
+                "entropy:", f'  rolls: "{ROLLS[:50]}"', f'  extra: "{OS_ENTROPY.hex()}"', "wallets:",
             ])
+            self.assertEqual(lines[4], "  - format: bip39")
+            self.assertEqual(lines[5].removeprefix("    language: "), language)
+            self.assertEqual(lines[6].removeprefix("    mnemonic: "),
+                             mnemonic.bip39_mnemonic(entropy, language))
+            self.assertEqual(lines[7:9], ["  - format: electrum", "    seed_type: segwit"])
+            self.assertEqual(lines[9].removeprefix("    language: "), language)
+            self.assertEqual(lines[10].removeprefix("    mnemonic: "),
+                             mnemonic.electrum_mnemonic(entropy, "segwit", language))
+            self.assertEqual(len(lines), 11)
         result = subprocess.run(
             [sys.executable, str(ROOT / "mnemonic.py"), "--language", "invalid"],
             input=ROLLS[:50], text=True, capture_output=True,
@@ -201,6 +221,44 @@ class TestMnemonic(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertEqual(result.stdout, "")
         self.assertIn("invalid choice", result.stderr)
+
+    def test_multiple_languages(self) -> None:
+        """Repeated languages produce distinct wallet groups in request order."""
+        flags = [
+            "--language", "japanese", "--language", "english", "--language", "japanese",
+            "--electrum-type", "standard", "--electrum-type", "segwit",
+        ]
+        result = self.run_prompt_cli(flags, ROLLS[:50], OS_ENTROPY.hex())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stderr, "")
+        entropy = mnemonic.mix_entropy(mnemonic.dice_entropy(ROLLS[:50]), OS_ENTROPY)
+        expected = [
+            "entropy:", f'  rolls: "{ROLLS[:50]}"', f'  extra: "{OS_ENTROPY.hex()}"', "wallets:",
+        ]
+        for language in ("japanese", "english"):
+            expected.extend([
+                "  - format: bip39",
+                f"    language: {language}",
+                f"    mnemonic: {mnemonic.bip39_mnemonic(entropy, language)}",
+            ])
+            for seed_type in ("standard", "segwit"):
+                expected.extend([
+                    "  - format: electrum",
+                    f"    seed_type: {seed_type}",
+                    f"    language: {language}",
+                    f"    mnemonic: {mnemonic.electrum_mnemonic(entropy, seed_type, language)}",
+                ])
+        self.assertEqual(result.stdout, "\n".join(expected) + "\n")
+
+    def test_numeric_entropy_is_quoted(self) -> None:
+        """Digit-only rolls and hex must remain strings for YAML consumers."""
+        rolls = "1" * 50
+        extra = bytes(32)
+        entropy = mnemonic.mix_entropy(mnemonic.dice_entropy(rolls), extra)
+        output = mnemonic.render_yaml(entropy, extra, rolls, ["segwit"], ["english"])
+        self.assertTrue(output.startswith(f'entropy:\n  rolls: "{rolls}"\n  extra: "{"0" * 64}"\n'))
+        self.assertIn("    mnemonic: ", output)
+        self.assertNotIn('    mnemonic: "', output)
 
     def test_mixed_vectors(self) -> None:
         """Pin the domain, concatenation order and truncation for both dice lengths."""
@@ -235,9 +293,12 @@ class TestMnemonic(unittest.TestCase):
             initial = subprocess.run(command, input=ROLLS[:count], text=True, capture_output=True)
             self.assertEqual(initial.returncode, 0, initial.stderr)
             lines = initial.stdout.splitlines()
-            self.assertEqual(lines[0], "entropy/extra")
-            self.assertEqual(len(bytes.fromhex(lines[1])), 32)
-            replay = self.run_prompt_cli([], ROLLS[:count], lines[1])
+            self.assertEqual(lines[0], "entropy:")
+            self.assertEqual(json.loads(lines[1].removeprefix("  rolls: ")), ROLLS[:count])
+            self.assertTrue(lines[2].startswith("  extra: "))
+            extra = json.loads(lines[2].removeprefix("  extra: "))
+            self.assertEqual(len(bytes.fromhex(extra)), 32)
+            replay = self.run_prompt_cli([], ROLLS[:count], extra)
             self.assertEqual(replay.returncode, 0, replay.stderr)
             self.assertEqual(replay.stdout, initial.stdout)
             self.assertEqual(replay.stderr, "")

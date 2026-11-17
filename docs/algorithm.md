@@ -13,8 +13,12 @@ That flag opens a hidden terminal prompt for exactly 64 hexadecimal characters w
 Failure to obtain OS randomness or hidden terminal input stops generation; there is no weaker fallback.
 An explicitly supplied value is validated for encoding and length, not randomness.
 
-Output uses UTF-8 and alternates identifiers with values on the following line:
-extra entropy, BIP39, then the requested Electrum types. Repeated types are deduplicated in request order.
+Output is UTF-8 YAML with `entropy.rolls` (the quoted dice digits), `entropy.extra` (a quoted hex string),
+and a `wallets` list. Each wallet has a `format` (`bip39` or `electrum`), `language` and `mnemonic`;
+Electrum entries also have a `seed_type` (`segwit` or `standard`). Rolls and extra entropy are quoted to
+preserve digit-only strings; labels and mnemonic phrases are unquoted.
+For each language in request order, a BIP39 entry comes first, followed by Electrum entries in request order.
+Repeated languages and Electrum types are deduplicated. Without `--language`, English is used.
 Errors go to stderr with a nonzero exit status; no progress is printed.
 
 ## BIP39
