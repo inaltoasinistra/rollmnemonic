@@ -10,7 +10,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 import warnings
 
-import mnemonic
+import rollmnemonic as mnemonic
 
 
 ROOT = Path(__file__).parent
@@ -34,7 +34,7 @@ class TestMnemonic(unittest.TestCase):
     def test_help_entropy(self) -> None:
         """Help distinguishes the supported roll counts, input entropy and output length."""
         result = subprocess.run(
-            [sys.executable, str(ROOT / "mnemonic.py"), "--help"],
+            [sys.executable, str(ROOT / "rollmnemonic.py"), "--help"],
             text=True, capture_output=True, timeout=10,
         )
         self.assertEqual(result.returncode, 0)
@@ -61,7 +61,7 @@ class TestMnemonic(unittest.TestCase):
             "runpy.run_path(path, run_name='__main__')\n"
         )
         return subprocess.run(
-            [sys.executable, "-c", launcher, str(ROOT / "mnemonic.py"), "--extra-entropy", *arguments],
+            [sys.executable, "-c", launcher, str(ROOT / "rollmnemonic.py"), "--extra-entropy", *arguments],
             input=json.dumps({"rolls": rolls, "extra": value}), text=True, capture_output=True, encoding="utf-8",
             env=os.environ | {"PYTHONIOENCODING": "ascii"}, timeout=30,
         )
@@ -188,7 +188,7 @@ class TestMnemonic(unittest.TestCase):
                 ])
             self.assertEqual(result.stdout, "\n".join(lines) + "\n")
         result = subprocess.run(
-            [sys.executable, str(ROOT / "mnemonic.py")], input="123\n", text=True, capture_output=True,
+            [sys.executable, str(ROOT / "rollmnemonic.py")], input="123\n", text=True, capture_output=True,
         )
         self.assertEqual(result.returncode, 2)
         self.assertEqual(result.stdout, "")
@@ -215,7 +215,7 @@ class TestMnemonic(unittest.TestCase):
                              mnemonic.electrum_mnemonic(entropy, "segwit", language))
             self.assertEqual(len(lines), 11)
         result = subprocess.run(
-            [sys.executable, str(ROOT / "mnemonic.py"), "--language", "invalid"],
+            [sys.executable, str(ROOT / "rollmnemonic.py"), "--language", "invalid"],
             input=ROLLS[:50], text=True, capture_output=True,
         )
         self.assertEqual(result.returncode, 2)
@@ -273,7 +273,7 @@ class TestMnemonic(unittest.TestCase):
             with self.assertRaises(ValueError):
                 mnemonic.mix_entropy(bytes(dice_size), bytes(os_size))
 
-    @patch("mnemonic.secrets.token_bytes")
+    @patch("rollmnemonic.secrets.token_bytes")
     def test_os_source(self, random_bytes: MagicMock) -> None:
         """Draw 32 CSPRNG bytes only when the caller has not supplied a value."""
         random_bytes.return_value = OS_ENTROPY
@@ -288,7 +288,7 @@ class TestMnemonic(unittest.TestCase):
 
     def test_os_replay(self) -> None:
         """The reported source exactly reproduces an initially OS-random run."""
-        command = [sys.executable, str(ROOT / "mnemonic.py")]
+        command = [sys.executable, str(ROOT / "rollmnemonic.py")]
         for count in (50, 99):
             initial = subprocess.run(command, input=ROLLS[:count], text=True, capture_output=True)
             self.assertEqual(initial.returncode, 0, initial.stderr)
@@ -313,7 +313,7 @@ class TestMnemonic(unittest.TestCase):
 
     def test_cli_rejects_secret_argument(self) -> None:
         result = subprocess.run(
-            [sys.executable, str(ROOT / "mnemonic.py"), "--extra-entropy", OS_ENTROPY.hex()],
+            [sys.executable, str(ROOT / "rollmnemonic.py"), "--extra-entropy", OS_ENTROPY.hex()],
             input=ROLLS[:50], text=True, capture_output=True, timeout=10,
         )
         self.assertEqual(result.returncode, 2)
@@ -325,7 +325,7 @@ class TestMnemonic(unittest.TestCase):
         warnings.warn("Can not control echo on the terminal.", getpass.GetPassWarning)
         return OS_ENTROPY.hex()
 
-    @patch("mnemonic.getpass.getpass")
+    @patch("rollmnemonic.getpass.getpass")
     def test_prompt_requires_hidden_input(self, prompt: MagicMock) -> None:
         """A getpass fallback warning aborts even if other code suppresses warnings."""
         prompt.side_effect = self.visible_fallback
@@ -334,7 +334,7 @@ class TestMnemonic(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "interactive terminal"):
                 mnemonic.prompt_extra_entropy()
 
-    @patch("mnemonic.getpass.getpass", side_effect=EOFError)
+    @patch("rollmnemonic.getpass.getpass", side_effect=EOFError)
     def test_prompt_eof(self, _prompt: MagicMock) -> None:
         with self.assertRaisesRegex(RuntimeError, "interactive terminal"):
             mnemonic.prompt_extra_entropy()
@@ -343,7 +343,7 @@ class TestMnemonic(unittest.TestCase):
     def test_no_terminal(self) -> None:
         """Redirected dice input must never become a visible fallback for secrets."""
         result = subprocess.run(
-            [sys.executable, str(ROOT / "mnemonic.py"), "--extra-entropy"],
+            [sys.executable, str(ROOT / "rollmnemonic.py"), "--extra-entropy"],
             input=ROLLS[:50], text=True, capture_output=True, start_new_session=True, timeout=10,
         )
         self.assertEqual(result.returncode, 2)

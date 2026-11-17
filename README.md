@@ -13,10 +13,10 @@ in order, without spaces. Files matching `rolls*.txt` other than the example are
 - **99 rolls:** 24-word BIP39 and 25-word Electrum phrases.
 
 ```bash
-python3 mnemonic.py < rolls-private.txt
-python3 mnemonic.py --language italian < rolls-private.txt
-python3 mnemonic.py --language english --language italian < rolls-private.txt
-python3 mnemonic.py --electrum-type standard < rolls-private.txt
+python3 rollmnemonic.py < rolls-private.txt
+python3 rollmnemonic.py --language italian < rolls-private.txt
+python3 rollmnemonic.py --language english --language italian < rolls-private.txt
+python3 rollmnemonic.py --electrum-type standard < rolls-private.txt
 ```
 
 Defaults to English and Electrum SegWit. Each run prints YAML with `entropy.rolls`, `entropy.extra` and a
@@ -40,7 +40,7 @@ Repeat `--electrum-type` to include both `segwit` and `standard` in the list.
 Repeat `--language` to generate wallets in multiple languages. Each requested language has a BIP39 entry
 followed by its Electrum entries; repeated languages and Electrum types are included only once.
 
-See `python3 mnemonic.py --help` for languages, options and dice-entropy guidance.
+See `python3 rollmnemonic.py --help` for languages, options and dice-entropy guidance.
 
 ## Reproduce a result
 
@@ -48,7 +48,7 @@ Fresh OS randomness makes each normal run different. To reproduce a previous res
 and enter its printed `entropy.extra` value at the hidden prompt:
 
 ```bash
-python3 mnemonic.py --extra-entropy < rolls-private.txt
+python3 rollmnemonic.py --extra-entropy < rolls-private.txt
 ```
 
 Use the same languages and Electrum types too. The extra value is entered privately, not as a command-line argument.

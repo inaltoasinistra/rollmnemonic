@@ -27,5 +27,5 @@ Cross-checking vectors establishes agreement for those inputs, not proof of corr
   independently checked with the Electrum source above. These exercise the Electrum stage directly with
   the original dice-derived bytes; CLI runs supply mixed bytes.
 
-The fixture files are test data, not runtime dependencies. Only `mnemonic.py` is needed to run the tool.
+The fixture files are test data, not runtime dependencies. Only `rollmnemonic.py` is needed to run the tool.
 See the [algorithm specification](algorithm.md) for the exact transformations to reproduce independently.

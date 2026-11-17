@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic dice mnemonics. Python 3.10+, standard library only.
+"""Rollmnemonic: deterministic dice mnemonics. Python 3.10+, standard library only.
 
 BIP39: SHA256 of exactly 50 or 99 ASCII dice digits; use its first 16 or
 all 32 bytes respectively as dice entropy. SHA256(MIX_DOMAIN || dice entropy
